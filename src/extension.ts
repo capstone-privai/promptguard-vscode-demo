@@ -17,23 +17,49 @@ class PromptGuardViewProvider implements vscode.WebviewViewProvider {
     this.view = view;
     view.webview.options = { enableScripts: true };
     view.webview.html = this.render();
-    void this.postStatus(view.webview);
-    view.webview.onDidReceiveMessage(async (message: { type?: string; text?: string }) => {
-      if (message.type === "setApiKey") {
-        await vscode.commands.executeCommand("promptguard.setApiKey");
-      } else if (message.type === "deleteApiKey") {
-        await vscode.commands.executeCommand("promptguard.deleteApiKey");
-      } else if (message.type === "sendPrompt" && typeof message.text === "string") {
-        await this.sendPrompt(view.webview, message.text);
+    this.context.subscriptions.push(view.webview.onDidReceiveMessage(async (message: { type?: string; text?: string }) => {
+      try {
+        if (message.type === "ready") {
+          await this.postStatus(view.webview);
+        } else if (message.type === "setApiKey") {
+          await this.setApiKey();
+        } else if (message.type === "deleteApiKey") {
+          await this.deleteApiKey();
+        } else if (message.type === "sendPrompt" && typeof message.text === "string") {
+          await this.sendPrompt(view.webview, message.text);
+        }
+        await this.postStatus(view.webview);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : "Extension command failed.";
+        await view.webview.postMessage({ type: "error", message: detail });
       }
-      await this.postStatus(view.webview);
-    });
+    }));
   }
 
   public refreshStatus(): void {
     if (this.view) {
       void this.postStatus(this.view.webview);
     }
+  }
+
+  public async setApiKey(): Promise<void> {
+    const value = await vscode.window.showInputBox({
+      title: "Set OpenAI API key",
+      prompt: "Stored in VS Code SecretStorage and never written to settings or logs.",
+      password: true,
+      ignoreFocusOut: true,
+    });
+    if (value?.trim()) {
+      await this.context.secrets.store(API_KEY_SECRET, value.trim());
+      void vscode.window.showInformationMessage("PromptGuard API key stored securely.");
+    }
+    this.refreshStatus();
+  }
+
+  public async deleteApiKey(): Promise<void> {
+    await this.context.secrets.delete(API_KEY_SECRET);
+    void vscode.window.showInformationMessage("PromptGuard API key deleted.");
+    this.refreshStatus();
   }
 
   private async sendPrompt(webview: vscode.Webview, text: string): Promise<void> {
@@ -127,8 +153,15 @@ class PromptGuardViewProvider implements vscode.WebviewViewProvider {
   </div>
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
-    document.getElementById('setKey').addEventListener('click', () => vscode.postMessage({type:'setApiKey'}));
-    document.getElementById('deleteKey').addEventListener('click', () => vscode.postMessage({type:'deleteApiKey'}));
+    const status = document.getElementById('status');
+    document.getElementById('setKey').addEventListener('click', () => {
+      status.textContent = 'Opening secure API key input…';
+      vscode.postMessage({type:'setApiKey'});
+    });
+    document.getElementById('deleteKey').addEventListener('click', () => {
+      status.textContent = 'Deleting API key…';
+      vscode.postMessage({type:'deleteApiKey'});
+    });
     const history = document.getElementById('history');
     const prompt = document.getElementById('prompt');
     const send = document.getElementById('send');
@@ -170,6 +203,7 @@ class PromptGuardViewProvider implements vscode.WebviewViewProvider {
         send.textContent = event.data.value ? 'Working…' : 'Send';
       }
     });
+    vscode.postMessage({type:'ready'});
   </script>
 </body>
 </html>`;
@@ -180,24 +214,8 @@ export function activate(context: vscode.ExtensionContext): void {
   const provider = new PromptGuardViewProvider(context);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(PromptGuardViewProvider.viewType, provider),
-    vscode.commands.registerCommand("promptguard.setApiKey", async () => {
-      const value = await vscode.window.showInputBox({
-        title: "Set OpenAI API key",
-        prompt: "Stored in VS Code SecretStorage and never written to settings or logs.",
-        password: true,
-        ignoreFocusOut: true,
-      });
-      if (value?.trim()) {
-        await context.secrets.store(API_KEY_SECRET, value.trim());
-        void vscode.window.showInformationMessage("PromptGuard API key stored securely.");
-        provider.refreshStatus();
-      }
-    }),
-    vscode.commands.registerCommand("promptguard.deleteApiKey", async () => {
-      await context.secrets.delete(API_KEY_SECRET);
-      void vscode.window.showInformationMessage("PromptGuard API key deleted.");
-      provider.refreshStatus();
-    }),
+    vscode.commands.registerCommand("promptguard.setApiKey", () => provider.setApiKey()),
+    vscode.commands.registerCommand("promptguard.deleteApiKey", () => provider.deleteApiKey()),
   );
 }
 
