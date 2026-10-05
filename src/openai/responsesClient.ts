@@ -12,6 +12,7 @@ export interface ResponseResult {
 export interface ResponseRequest {
   model: string;
   input: string | Array<Record<string, unknown>>;
+  instructions?: string;
   tools?: Array<Record<string, unknown>>;
   previous_response_id?: string;
   store?: boolean;

@@ -19,17 +19,17 @@ CASES = [
 
 def main() -> None:
     scanner = CredSweeper(ml_threshold=0, use_filters=True, pool_count=1).scanner
-    for value in CASES:
+    for case_index, value in enumerate(CASES, start=1):
         candidates = scanner.scan(StringContentProvider([value], file_path="fixture.txt"))
-        print("CASE", value)
+        print("CASE", case_index)
         for candidate in candidates:
             print(
                 candidate.rule_name,
                 [
                     (
-                        item.value,
                         item.value_start,
                         item.value_end,
+                        len(item.value),
                         item.url_part,
                         item.variable,
                         item.key,

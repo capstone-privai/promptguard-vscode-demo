@@ -9,6 +9,7 @@ export interface AgentCallbacks {
 
 export class PromptGuardAgent {
   private readonly gateway: PrivacyGateway;
+  private readonly instructions = "You are a coding assistant operating only through the supplied workspace tools. Inspect files when needed, explain changes clearly, and request write_file only when a modification is necessary.";
 
   public constructor(
     private readonly client: OpenAIResponsesClient,
@@ -22,7 +23,7 @@ export class PromptGuardAgent {
 
   public async run(rawPrompt: string): Promise<string> {
     const prompt = await this.gateway.sanitize(rawPrompt, "user_prompt", "user-prompt.txt");
-    let response = await this.client.create({ model: this.model, input: prompt.text, tools: TOOL_DEFINITIONS });
+    let response = await this.client.create({ model: this.model, input: prompt.text, instructions: this.instructions, tools: TOOL_DEFINITIONS });
     for (let round = 0; round < 8; round += 1) {
       const calls = functionCalls(response.output ?? []);
       if (calls.length === 0) return responseText(response);
@@ -40,9 +41,9 @@ export class PromptGuardAgent {
       }
       response = await this.client.create({
         model: this.model,
-        input: outputs,
+        input: [...(response.output ?? []), ...outputs],
+        instructions: this.instructions,
         tools: TOOL_DEFINITIONS,
-        previous_response_id: response.id,
       });
     }
     throw new Error("Agent stopped after reaching the 8-round tool safety limit.");

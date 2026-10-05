@@ -3,6 +3,7 @@ import test from "node:test";
 import { OpenAIResponsesClient, ResponseRequest } from "../openai/responsesClient";
 import { PrivacyGateway } from "../privacy/gateway";
 import { Detector } from "../privacy/types";
+import { CredSweeperDetector } from "../privacy/detectorClient";
 
 const SYNTHETIC_SECRET = "synthetic-secret-value";
 
@@ -46,4 +47,12 @@ test("value-only span preserves connection structure", async () => {
   const gateway = new PrivacyGateway(new MarkerDetector(), () => undefined);
   const result = await gateway.sanitize(original, "tool_output", "config.txt");
   assert.equal(result.text, "postgresql://admin:[PASSWORD_1]@db.internal:5432/payments");
+});
+
+test("detector startup failure is fail-closed", async () => {
+  const detector = new CredSweeperDetector(process.cwd(), "Z:\\missing\\python.exe", 500);
+  await assert.rejects(
+    detector.scan(`password=${SYNTHETIC_SECRET}`, "prompt.txt"),
+    /request blocked/,
+  );
 });
