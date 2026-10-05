@@ -4,7 +4,9 @@ from credsweeper.file_handler.string_content_provider import StringContentProvid
 
 CASES = [
     "API_KEY=sk-example-123456",
+    "API_KEY=Z9q7Lm2Vx8Np4Rt6Yw3Kd5Hs1Ua9Ce7Gi2Mo8Qz4",
     "Authorization: Bearer abcdef123456",
+    "Authorization: Bearer Z9q7Lm2Vx8Np4Rt6Yw3Kd5Hs1Ua9Ce7Gi2Mo8Qz4",
     "postgresql://admin:secret123@prod-db.internal:5432/payments",
     "mysql://user:secret@db.internal:3306/app",
     "https://admin:secret@example.internal/api",

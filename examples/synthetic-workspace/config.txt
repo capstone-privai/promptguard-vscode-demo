@@ -1,0 +1,4 @@
+DB_URL=postgresql://demo_user:synthetic-db-password@db.internal:5432/demo
+DB_PASSWORD=synthetic-db-password
+SERVICE_TOKEN=Z9q7Lm2Vx8Np4Rt6Yw3Kd5Hs1Ua9Ce7Gi2Mo8Qz4
+LOG_LEVEL=debug

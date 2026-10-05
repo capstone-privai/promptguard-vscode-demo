@@ -1,5 +1,8 @@
 import * as vscode from "vscode";
-import { OpenAIResponsesClient, responseText } from "./openai/responsesClient";
+import { PromptGuardAgent } from "./agent/agentLoop";
+import { OpenAIResponsesClient } from "./openai/responsesClient";
+import { CredSweeperDetector } from "./privacy/detectorClient";
+import { WorkspaceTools } from "./tools/workspaceTools";
 
 const API_KEY_SECRET = "promptguard.openaiApiKey";
 
@@ -44,10 +47,35 @@ class PromptGuardViewProvider implements vscode.WebviewViewProvider {
     }
     await webview.postMessage({ type: "busy", value: true });
     try {
+      const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (!root) {
+        throw new Error("Open a workspace folder before starting the agent.");
+      }
       const model = vscode.workspace.getConfiguration("promptguard").get<string>("model", "gpt-6-luna");
+      const pythonPath = vscode.workspace.getConfiguration("promptguard").get<string>("pythonPath", "");
       const client = new OpenAIResponsesClient(apiKey);
-      const response = await client.create({ model, input: text });
-      await webview.postMessage({ type: "assistant", text: responseText(response) });
+      const detector = new CredSweeperDetector(this.context.extensionPath, pythonPath);
+      const tools = new WorkspaceTools(
+        root,
+        (event) => { void webview.postMessage({ type: "tool", event }); },
+        async (relativePath) => {
+          const choice = await vscode.window.showWarningMessage(
+            `PromptGuard agent wants to write ${relativePath}`,
+            { modal: true, detail: "Review source control changes after allowing this Demo V0 operation." },
+            "Allow write",
+          );
+          return choice === "Allow write";
+        },
+      );
+      const agent = new PromptGuardAgent(
+        client,
+        detector,
+        tools,
+        { privacy: (event) => { void webview.postMessage({ type: "privacy", event }); } },
+        model,
+      );
+      const answer = await agent.run(text);
+      await webview.postMessage({ type: "assistant", text: answer });
     } catch (error) {
       const message = error instanceof Error ? error.message : "OpenAI request failed.";
       await webview.postMessage({ type: "error", message });
@@ -79,6 +107,8 @@ class PromptGuardViewProvider implements vscode.WebviewViewProvider {
     .user { background: var(--vscode-textBlockQuote-background); }
     .assistant { border: 1px solid var(--vscode-panel-border); }
     .error { color: var(--vscode-errorForeground); border: 1px solid var(--vscode-inputValidation-errorBorder); }
+    .event { color: var(--vscode-descriptionForeground); border-left: 3px solid var(--vscode-charts-blue); padding: 6px 8px; font-size: 0.9em; }
+    .privacy { border-left-color: var(--vscode-charts-green); }
     textarea { box-sizing: border-box; width: 100%; min-height: 90px; resize: vertical; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); padding: 8px; }
     .composer { display: flex; flex-direction: column; gap: 8px; }
   </style>
@@ -108,6 +138,12 @@ class PromptGuardViewProvider implements vscode.WebviewViewProvider {
       node.textContent = (kind === 'user' ? 'You\n' : kind === 'assistant' ? 'Agent\n' : 'Error\n') + text;
       history.appendChild(node);
     }
+    function addEvent(kind, text) {
+      const node = document.createElement('div');
+      node.className = 'event ' + kind;
+      node.textContent = text;
+      history.appendChild(node);
+    }
     send.addEventListener('click', () => {
       const text = prompt.value;
       if (!text.trim()) return;
@@ -122,6 +158,13 @@ class PromptGuardViewProvider implements vscode.WebviewViewProvider {
         addMessage('assistant', event.data.text);
       } else if (event.data.type === 'error') {
         addMessage('error', event.data.message);
+      } else if (event.data.type === 'privacy') {
+        const item = event.data.event;
+        const label = item.source === 'user_prompt' ? 'User prompt' : 'Tool output';
+        addEvent('privacy', '🔒 ' + label + ': ' + item.count + ' secret span(s) masked' + (item.types.length ? ' (' + item.types.join(', ') + ')' : ''));
+      } else if (event.data.type === 'tool') {
+        const item = event.data.event;
+        addEvent('tool', '🛠 ' + item.tool + (item.path ? ': ' + item.path : '') + ' — ' + item.status);
       } else if (event.data.type === 'busy') {
         send.disabled = event.data.value;
         send.textContent = event.data.value ? 'Working…' : 'Send';

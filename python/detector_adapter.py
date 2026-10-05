@@ -23,10 +23,10 @@ def secret_type(rule_name: str) -> str:
         return "ACCESS_KEY"
     if "password" in name or "url credentials" in name:
         return "PASSWORD"
+    if "openai" in name or "api" in name or name == "key":
+        return "API_KEY"
     if "bearer" in name or "token" in name:
         return "TOKEN"
-    if "api" in name or name == "key":
-        return "API_KEY"
     return "SECRET"
 
 
@@ -58,7 +58,6 @@ def scan(text: str, source: str) -> list[dict[str, Any]]:
             value = text[start:end]
             if not value or value != item.value:
                 continue
-            key = (start, end)
             normalized = {
                 "type": secret_type(candidate.rule_name),
                 "start": start,
@@ -66,11 +65,23 @@ def scan(text: str, source: str) -> list[dict[str, Any]]:
                 "rule": candidate.rule_name,
                 "fingerprint": hashlib.sha256(value.encode("utf-8")).hexdigest(),
             }
-            # Multiple CredSweeper rules often identify the same value. Keep a
-            # single span, preferring the more specific type over SECRET.
-            current = detections.get(key)
-            if current is None or current["type"] == "SECRET":
-                detections[key] = normalized
+            # CredSweeper de-duplicates repeated equal credentials. Once a value
+            # is positively detected, cover every exact occurrence so a later
+            # copy cannot remain raw. This does not add a new detection rule.
+            occurrence = text.find(value)
+            while occurrence >= 0:
+                expanded = {
+                    **normalized,
+                    "start": occurrence,
+                    "end": occurrence + len(value),
+                }
+                key = (expanded["start"], expanded["end"])
+                # Multiple rules also identify the same span. Keep a single
+                # result, preferring a specific type over generic SECRET.
+                current = detections.get(key)
+                if current is None or current["type"] == "SECRET":
+                    detections[key] = expanded
+                occurrence = text.find(value, occurrence + len(value))
 
     return sorted(detections.values(), key=lambda item: (item["start"], item["end"]))
 
