@@ -1,0 +1,15 @@
+node_modules/
+out/
+.venv/
+.pytest_cache/
+__pycache__/
+*.pyc
+*.vsix
+.DS_Store
+.env
+.env.*
+!.env.example
+coverage/
+test-results/
+*.log
+

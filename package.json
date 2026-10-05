@@ -1,0 +1,75 @@
+{
+  "name": "promptguard-vscode-demo",
+  "displayName": "PromptGuard Demo V0",
+  "description": "Local-first secret masking before coding-agent context reaches a cloud LLM.",
+  "version": "0.0.1",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:promptguard.chat"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "promptguard.setApiKey",
+        "title": "PromptGuard: Set OpenAI API Key"
+      },
+      {
+        "command": "promptguard.deleteApiKey",
+        "title": "PromptGuard: Delete OpenAI API Key"
+      }
+    ],
+    "configuration": {
+      "title": "PromptGuard",
+      "properties": {
+        "promptguard.model": {
+          "type": "string",
+          "default": "gpt-6-luna",
+          "description": "OpenAI Responses API model used by the demo."
+        },
+        "promptguard.pythonPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional Python executable containing CredSweeper. Empty uses the repository .venv."
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "promptguard",
+          "title": "PromptGuard",
+          "icon": "media/shield.svg"
+        }
+      ]
+    },
+    "views": {
+      "promptguard": [
+        {
+          "type": "webview",
+          "id": "promptguard.chat",
+          "name": "Private Agent"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "npm run compile && node --test out/test/*.test.js",
+    "check": "npm run compile && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/vscode": "^1.100.0",
+    "typescript": "^5.9.0"
+  }
+}
+
