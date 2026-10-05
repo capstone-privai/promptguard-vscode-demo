@@ -3,6 +3,8 @@ import * as path from "node:path";
 import { Detector, Detection } from "./types";
 
 export class CredSweeperDetector implements Detector {
+  public readonly displayName = "CredSweeper";
+
   public constructor(
     private readonly extensionPath: string,
     private readonly configuredPython = "",

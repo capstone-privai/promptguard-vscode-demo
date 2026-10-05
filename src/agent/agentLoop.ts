@@ -36,7 +36,12 @@ export class PromptGuardAgent {
         } catch (error) {
           rawResult = error instanceof Error ? `Tool error: ${error.message}` : "Tool error.";
         }
-        const safe = await this.gateway.sanitize(rawResult, "tool_output", `tool-${call.name}.txt`);
+        const safe = await this.gateway.sanitize(
+          rawResult,
+          "tool_output",
+          `tool-${call.name}.txt`,
+          { sourceTool: call.name },
+        );
         outputs.push({ type: "function_call_output", call_id: call.callId, output: safe.text });
       }
       response = await this.client.create({

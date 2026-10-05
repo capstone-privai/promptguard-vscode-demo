@@ -8,6 +8,8 @@ import { CredSweeperDetector } from "../privacy/detectorClient";
 const SYNTHETIC_SECRET = "synthetic-secret-value";
 
 class MarkerDetector implements Detector {
+  public readonly displayName = "Test detector";
+
   public async scan(text: string): Promise<Array<{ type: string; start: number; end: number; rule: string; fingerprint: string }>> {
     const detections = [];
     let start = text.indexOf(SYNTHETIC_SECRET);
@@ -23,6 +25,21 @@ test("same secret receives the same session placeholder", async () => {
   const gateway = new PrivacyGateway(new MarkerDetector(), () => undefined);
   const result = await gateway.sanitize(`${SYNTHETIC_SECRET} and ${SYNTHETIC_SECRET}`, "user_prompt", "prompt.txt");
   assert.equal(result.text, "[PASSWORD_1] and [PASSWORD_1]");
+});
+
+test("privacy event exposes structured metadata without raw credential material", async () => {
+  const events: Parameters<ConstructorParameters<typeof PrivacyGateway>[1]>[0][] = [];
+  const gateway = new PrivacyGateway(new MarkerDetector(), (event) => events.push(event));
+  await gateway.sanitize(`password=${SYNTHETIC_SECRET}`, "tool_output", "tool-read_file.txt", { sourceTool: "read_file" });
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.detectedCount, 1);
+  assert.equal(events[0]?.maskedCount, 1);
+  assert.equal(events[0]?.count, 1);
+  assert.equal(events[0]?.sourceTool, "read_file");
+  assert.deepEqual(events[0]?.findings, [{ type: "PASSWORD", detector: "Test detector", rule: "Password", action: "MASK" }]);
+  const serialized = JSON.stringify(events);
+  assert.equal(serialized.includes(SYNTHETIC_SECRET), false);
+  assert.equal(serialized.includes("same-one-way-id"), false);
 });
 
 test("user prompt and tool output are sanitized in cloud-bound requests", async () => {
