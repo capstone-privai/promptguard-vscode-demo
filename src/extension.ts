@@ -168,7 +168,7 @@ class PromptGuardViewProvider implements vscode.WebviewViewProvider {
     function addMessage(kind, text) {
       const node = document.createElement('div');
       node.className = 'message ' + kind;
-      node.textContent = (kind === 'user' ? 'You\n' : kind === 'assistant' ? 'Agent\n' : 'Error\n') + text;
+      node.textContent = (kind === 'user' ? 'You\\n' : kind === 'assistant' ? 'Agent\\n' : 'Error\\n') + text;
       history.appendChild(node);
     }
     function addEvent(kind, text) {
