@@ -75,7 +75,7 @@ These were measured with `scripts/probe_detector.py`, not inferred:
 | Synthetic form | Rule observed | Returned span |
 |---|---|---|
 | `DB_PASSWORD=...` | Password | value only |
-| OpenAI-shaped key | OpenAI Token / API / Key | key value only; adapter de-duplicates the span |
+| High-entropy API-key assignment | API / Key | key value only; adapter de-duplicates the span |
 | `Authorization: Bearer ...` (32+ chars) | Bearer Authorization / Auth | token value only |
 | PostgreSQL URL user/password | URL Credentials | password value only |
 | MySQL URL user/password | URL Credentials | password value, but an additional generic `Secret` false positive was observed over `port/path` |
@@ -132,5 +132,5 @@ This PoC demonstrates only that PromptGuard-controlled user prompts and supporte
 ## Repository status
 
 - Branch: `main`
-- GitHub remote: not configured. Repository visibility policy was unknown, so no public/private repository was guessed.
+- GitHub remote: `https://github.com/capstone-privai/promptguard-vscode-demo.git` (public).
 - Real API-key chat: implemented but not verified in automated tests.
