@@ -106,6 +106,27 @@ The Python test runs CredSweeper itself against user-prompt, password assignment
 
 Compilation and these offline tests do not prove a real OpenAI request. End-to-end cloud behavior requires the user's API key and is deliberately not automated or recorded.
 
+### Shared metric-1 evaluation
+
+The current extension privacy path can be evaluated with the team's synthetic
+[`promptguard-data`](https://github.com/capstone-privai/promptguard-data) dataset and the scorer from the
+`feat/evaluation-metric1` branch of `promptguard-demo-v0`. Clone all three repositories as siblings, then run:
+
+```powershell
+git clone https://github.com/capstone-privai/promptguard-data.git ..\promptguard-data
+git clone --branch feat/evaluation-metric1 https://github.com/capstone-privai/promptguard-demo-v0.git ..\promptguard-demo-v0-eval
+.\.venv\Scripts\python.exe .\scripts\evaluate_metric1.py
+```
+
+The adapter calls this repository's real `python/detector_adapter.py`; it does not reimplement the detector.
+It scans the channels handled by this demo (`prompt`, `stdout`, `stderr`, and reserved `file_read`), preserves
+session placeholder behavior, and writes only aggregate/span-offset results under ignored `evaluation-runs/`.
+Do not add `--debug` to the shared evaluator because debug artifacts can contain raw synthetic input.
+
+The first reproducible run and interpretation are in [docs/METRIC1_EVALUATION_KO.md](docs/METRIC1_EVALUATION_KO.md).
+The dataset is a small, high-density synthetic pilot with `human_review=pending`, so its scores are regression
+evidence, not production performance claims.
+
 ## Failure and storage boundaries
 
 - Raw prompt/tool text exists transiently in extension and detector process memory because local scanning requires it.

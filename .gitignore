@@ -11,5 +11,6 @@ __pycache__/
 !.env.example
 coverage/
 test-results/
+evaluation-runs/
 *.log
 
