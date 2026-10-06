@@ -138,7 +138,7 @@ evidence, not production performance claims.
 - Raw prompt/tool text exists transiently in extension and detector process memory because local scanning requires it.
 - The prompt composer displays text while the user is typing. On submission it is cleared and the history records only a fixed content-hidden notice; the cloud client receives only the sanitized representation.
 - Responses are sent with `store=false`. Tool turns replay prior response output in the next request rather than relying on a stored `previous_response_id`.
-- API errors expose only HTTP status and optional OpenAI request ID; response bodies are not logged.
+- API errors expose only the fixed request stage, HTTP status, and an optional validated OpenAI request ID; response bodies and upstream exception details are not logged or rendered.
 - The synthetic fixture deliberately contains fake credential-shaped strings. Never replace them with real secrets.
 
 ## Explicit limitations

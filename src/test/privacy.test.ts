@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { OpenAIResponsesClient, ResponseRequest } from "../openai/responsesClient";
+import { OpenAIRequestError, OpenAIResponsesClient, ResponseRequest } from "../openai/responsesClient";
 import { PrivacyGateway } from "../privacy/gateway";
 import { Detector } from "../privacy/types";
 import { CredSweeperDetector } from "../privacy/detectorClient";
@@ -57,6 +57,67 @@ test("user prompt and tool output are sanitized in cloud-bound requests", async 
   assert.equal(serialized.includes(SYNTHETIC_SECRET), false);
   assert.equal(serialized.includes("[PASSWORD_1]"), true);
   assert.equal(requests.every((request) => request.store === false), true);
+});
+
+test("OpenAI transport failures retain only safe request metadata", async () => {
+  const rawSecret = "raw-secret-from-upstream-error";
+  const httpClient = new OpenAIResponsesClient("not-a-real-key", async () => {
+    throw new OpenAIRequestError("OPENAI_INITIAL_REQUEST", 429, "req_rate_limit_123");
+  });
+  await assert.rejects(
+    httpClient.create({ model: "test-model", input: "safe" }, "OPENAI_TOOL_CONTINUATION"),
+    (error: unknown) => {
+      assert.equal(error instanceof OpenAIRequestError, true);
+      const requestError = error as OpenAIRequestError;
+      assert.equal(requestError.stage, "OPENAI_TOOL_CONTINUATION");
+      assert.equal(requestError.status, 429);
+      assert.equal(requestError.requestId, "req_rate_limit_123");
+      return true;
+    },
+  );
+
+  const networkClient = new OpenAIResponsesClient("not-a-real-key", async () => {
+    throw new Error(rawSecret);
+  });
+  await assert.rejects(
+    networkClient.create({ model: "test-model", input: "safe" }),
+    (error: unknown) => {
+      assert.equal(error instanceof OpenAIRequestError, true);
+      const requestError = error as OpenAIRequestError;
+      assert.equal(requestError.stage, "OPENAI_INITIAL_REQUEST");
+      assert.equal(requestError.status, undefined);
+      assert.equal(String(requestError).includes(rawSecret), false);
+      assert.equal(requestError.stack?.includes(rawSecret) ?? false, false);
+      return true;
+    },
+  );
+});
+
+test("OpenAI HTTP failures discard response bodies and unsafe request IDs", async () => {
+  const rawSecret = "raw-secret-from-http-response";
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(rawSecret, {
+    status: 429,
+    headers: { "x-request-id": rawSecret },
+  })) as typeof fetch;
+  try {
+    const client = new OpenAIResponsesClient("not-a-real-key");
+    await assert.rejects(
+      client.create({ model: "test-model", input: "safe" }),
+      (error: unknown) => {
+        assert.equal(error instanceof OpenAIRequestError, true);
+        const requestError = error as OpenAIRequestError;
+        assert.equal(requestError.stage, "OPENAI_INITIAL_REQUEST");
+        assert.equal(requestError.status, 429);
+        assert.equal(requestError.requestId, undefined);
+        assert.equal(String(requestError).includes(rawSecret), false);
+        assert.equal(requestError.stack?.includes(rawSecret) ?? false, false);
+        return true;
+      },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("value-only span preserves connection structure", async () => {

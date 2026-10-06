@@ -5,10 +5,10 @@ import { CredSweeperDetector } from "./privacy/detectorClient";
 import { WorkspaceTools } from "./tools/workspaceTools";
 import {
   presentPrivacyEvent,
+  presentProcessingError,
   presentPromptSubmission,
   presentToolActivity,
   SAFE_COMMAND_ERROR_MESSAGE,
-  SAFE_PROCESSING_ERROR_MESSAGE,
 } from "./ui/presentation";
 
 const API_KEY_SECRET = "promptguard.openaiApiKey";
@@ -109,8 +109,8 @@ class PromptGuardViewProvider implements vscode.WebviewViewProvider {
       );
       const answer = await agent.run(text);
       await webview.postMessage({ type: "assistant", text: answer });
-    } catch {
-      await webview.postMessage({ type: "error", message: SAFE_PROCESSING_ERROR_MESSAGE });
+    } catch (error) {
+      await webview.postMessage({ type: "error", message: presentProcessingError(error) });
     } finally {
       await webview.postMessage({ type: "busy", value: false });
     }

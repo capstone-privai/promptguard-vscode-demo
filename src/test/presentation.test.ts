@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { OpenAIRequestError } from "../openai/responsesClient";
 import { PrivacyEvent, PrivacyFinding } from "../privacy/gateway";
 import {
   presentPrivacyEvent,
+  presentProcessingError,
   presentPromptSubmission,
   presentToolActivity,
   SAFE_PROCESSING_ERROR_MESSAGE,
@@ -130,4 +132,22 @@ test("unknown source tool metadata is not rendered", () => {
 test("aggregate count differences do not invent a masking failure", () => {
   const prompt = presentPrivacyEvent(privacyEvent({ detectedCount: 2, maskedCount: 1, count: 1 }));
   assert.deepEqual(prompt.phases, ["SECRET_DETECTED", "SECRET_MASKED", "PROMPT_SANITIZED"]);
+});
+
+test("OpenAI failures expose only actionable safe metadata", () => {
+  assert.equal(
+    presentProcessingError(new OpenAIRequestError("OPENAI_INITIAL_REQUEST", 401, "req_authentication123")),
+    "OpenAI authentication failed during the initial model request (401). Re-enter the API key in PromptGuard. Request ID: req_authentication123.",
+  );
+  assert.equal(
+    presentProcessingError(new OpenAIRequestError("OPENAI_TOOL_CONTINUATION", 429)),
+    "OpenAI quota or rate limit reached during the tool-output continuation (429). Check API billing and usage limits.",
+  );
+  assert.equal(
+    presentProcessingError(new OpenAIRequestError("OPENAI_INITIAL_REQUEST")),
+    "OpenAI could not be reached during the initial model request. Check the network connection and try again.",
+  );
+  const unsafeRequestId = presentProcessingError(new OpenAIRequestError("OPENAI_INITIAL_REQUEST", 500, RAW_SECRET));
+  assert.equal(unsafeRequestId.includes(RAW_SECRET), false);
+  assert.equal(presentProcessingError(new Error(RAW_SECRET)), SAFE_PROCESSING_ERROR_MESSAGE);
 });

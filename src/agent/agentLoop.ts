@@ -23,7 +23,10 @@ export class PromptGuardAgent {
 
   public async run(rawPrompt: string): Promise<string> {
     const prompt = await this.gateway.sanitize(rawPrompt, "user_prompt", "user-prompt.txt");
-    let response = await this.client.create({ model: this.model, input: prompt.text, instructions: this.instructions, tools: TOOL_DEFINITIONS });
+    let response = await this.client.create(
+      { model: this.model, input: prompt.text, instructions: this.instructions, tools: TOOL_DEFINITIONS },
+      "OPENAI_INITIAL_REQUEST",
+    );
     for (let round = 0; round < 8; round += 1) {
       const calls = functionCalls(response.output ?? []);
       if (calls.length === 0) return responseText(response);
@@ -49,7 +52,7 @@ export class PromptGuardAgent {
         input: [...(response.output ?? []), ...outputs],
         instructions: this.instructions,
         tools: TOOL_DEFINITIONS,
-      });
+      }, "OPENAI_TOOL_CONTINUATION");
     }
     throw new Error("Agent stopped after reaching the 8-round tool safety limit.");
   }

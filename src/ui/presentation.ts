@@ -1,4 +1,5 @@
 import { PrivacyEvent } from "../privacy/gateway";
+import { OpenAIRequestError } from "../openai/responsesClient";
 import { ToolActivity, ToolName } from "../tools/workspaceTools";
 
 export const PROMPT_SUBMITTED_MESSAGE = "Prompt submitted for local privacy scanning. Content hidden after submission.";
@@ -49,6 +50,24 @@ const KNOWN_TOOLS = new Set<ToolName>(Object.keys(TOOL_ACTIONS) as ToolName[]);
 
 export function presentPromptSubmission(_rawPrompt: string): PromptSubmissionView {
   return { phase: "PROMPT_RECEIVED", message: PROMPT_SUBMITTED_MESSAGE };
+}
+
+export function presentProcessingError(error: unknown): string {
+  if (!(error instanceof OpenAIRequestError)) return SAFE_PROCESSING_ERROR_MESSAGE;
+  const stage = error.stage === "OPENAI_TOOL_CONTINUATION"
+    ? "tool-output continuation"
+    : "initial model request";
+  if (error.status === undefined) {
+    return `OpenAI could not be reached during the ${stage}. Check the network connection and try again.`;
+  }
+  const requestId = error.requestId ? ` Request ID: ${error.requestId}.` : "";
+  if (error.status === 400) return `OpenAI rejected the ${stage} (400). Check the configured model and request settings.${requestId}`;
+  if (error.status === 401) return `OpenAI authentication failed during the ${stage} (401). Re-enter the API key in PromptGuard.${requestId}`;
+  if (error.status === 403) return `OpenAI access was denied during the ${stage} (403). Check the project API key permissions.${requestId}`;
+  if (error.status === 404) return `The configured OpenAI model is unavailable during the ${stage} (404). Check promptguard.model.${requestId}`;
+  if (error.status === 429) return `OpenAI quota or rate limit reached during the ${stage} (429). Check API billing and usage limits.${requestId}`;
+  if (error.status >= 500) return `OpenAI is temporarily unavailable during the ${stage} (${error.status}). Try again later.${requestId}`;
+  return `OpenAI request failed during the ${stage} (${error.status}).${requestId}`;
 }
 
 export function presentPrivacyEvent(event: PrivacyEvent): PrivacyEventView {
