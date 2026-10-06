@@ -27,6 +27,7 @@ export type ResponseTransport = (
 ) => Promise<ResponseResult>;
 
 export class OpenAIRequestError extends Error {
+  public readonly code = "OPENAI_REQUEST_ERROR";
   public readonly stage: OpenAIRequestStage;
   public readonly status?: number;
   public readonly requestId?: string;
@@ -51,6 +52,27 @@ export class OpenAIRequestError extends Error {
   }
 }
 
+export function isOpenAIRequestError(error: unknown): error is OpenAIRequestError {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as {
+    code?: unknown;
+    stage?: unknown;
+    status?: unknown;
+    requestId?: unknown;
+  };
+  const validStage = candidate.stage === "OPENAI_INITIAL_REQUEST"
+    || candidate.stage === "OPENAI_TOOL_CONTINUATION";
+  const validStatus = candidate.status === undefined
+    || (typeof candidate.status === "number"
+      && Number.isInteger(candidate.status)
+      && candidate.status >= 100
+      && candidate.status <= 599);
+  const validRequestId = candidate.requestId === undefined
+    || (typeof candidate.requestId === "string"
+      && /^req_[A-Za-z0-9_-]{1,120}$/.test(candidate.requestId));
+  return candidate.code === "OPENAI_REQUEST_ERROR" && validStage && validStatus && validRequestId;
+}
+
 export class OpenAIResponsesClient {
   public constructor(
     private readonly apiKey: string,
@@ -67,7 +89,7 @@ export class OpenAIResponsesClient {
     try {
       return await this.transport({ ...request, store: false }, this.apiKey, safeStage);
     } catch (error) {
-      if (error instanceof OpenAIRequestError) {
+      if (isOpenAIRequestError(error)) {
         throw new OpenAIRequestError(safeStage, error.status, error.requestId);
       }
       throw new OpenAIRequestError(safeStage);

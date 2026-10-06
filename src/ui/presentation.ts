@@ -1,5 +1,6 @@
 import { PrivacyEvent } from "../privacy/gateway";
-import { OpenAIRequestError } from "../openai/responsesClient";
+import { isOpenAIRequestError } from "../openai/responsesClient";
+import { isPromptGuardProcessingError } from "../processing/errors";
 import { ToolActivity, ToolName } from "../tools/workspaceTools";
 
 export const PROMPT_SUBMITTED_MESSAGE = "Prompt submitted for local privacy scanning. Content hidden after submission.";
@@ -53,21 +54,28 @@ export function presentPromptSubmission(_rawPrompt: string): PromptSubmissionVie
 }
 
 export function presentProcessingError(error: unknown): string {
-  if (!(error instanceof OpenAIRequestError)) return SAFE_PROCESSING_ERROR_MESSAGE;
-  const stage = error.stage === "OPENAI_TOOL_CONTINUATION"
-    ? "tool-output continuation"
-    : "initial model request";
-  if (error.status === undefined) {
-    return `OpenAI could not be reached during the ${stage}. Check the network connection and try again.`;
+  if (isOpenAIRequestError(error)) {
+    const stage = error.stage === "OPENAI_TOOL_CONTINUATION"
+      ? "tool-output continuation"
+      : "initial model request";
+    if (error.status === undefined) {
+      return `OpenAI could not be reached during the ${stage}. Check the network connection and try again.`;
+    }
+    const requestId = error.requestId ? ` Request ID: ${error.requestId}.` : "";
+    if (error.status === 400) return `OpenAI rejected the ${stage} (400). Check the configured model and request settings.${requestId}`;
+    if (error.status === 401) return `OpenAI authentication failed during the ${stage} (401). Re-enter the API key in PromptGuard.${requestId}`;
+    if (error.status === 403) return `OpenAI access was denied during the ${stage} (403). Check the project API key permissions.${requestId}`;
+    if (error.status === 404) return `The configured OpenAI model is unavailable during the ${stage} (404). Check promptguard.model.${requestId}`;
+    if (error.status === 429) return `OpenAI quota or rate limit reached during the ${stage} (429). Check API billing and usage limits.${requestId}`;
+    if (error.status >= 500) return `OpenAI is temporarily unavailable during the ${stage} (${error.status}). Try again later.${requestId}`;
+    return `OpenAI request failed during the ${stage} (${error.status}).${requestId}`;
   }
-  const requestId = error.requestId ? ` Request ID: ${error.requestId}.` : "";
-  if (error.status === 400) return `OpenAI rejected the ${stage} (400). Check the configured model and request settings.${requestId}`;
-  if (error.status === 401) return `OpenAI authentication failed during the ${stage} (401). Re-enter the API key in PromptGuard.${requestId}`;
-  if (error.status === 403) return `OpenAI access was denied during the ${stage} (403). Check the project API key permissions.${requestId}`;
-  if (error.status === 404) return `The configured OpenAI model is unavailable during the ${stage} (404). Check promptguard.model.${requestId}`;
-  if (error.status === 429) return `OpenAI quota or rate limit reached during the ${stage} (429). Check API billing and usage limits.${requestId}`;
-  if (error.status >= 500) return `OpenAI is temporarily unavailable during the ${stage} (${error.status}). Try again later.${requestId}`;
-  return `OpenAI request failed during the ${stage} (${error.status}).${requestId}`;
+  if (!isPromptGuardProcessingError(error)) return SAFE_PROCESSING_ERROR_MESSAGE;
+  if (error.stage === "PROMPT_SANITIZATION") return "Local prompt sanitization failed. The request was blocked before contacting OpenAI.";
+  if (error.stage === "TOOL_OUTPUT_SANITIZATION") return "Local tool-output sanitization failed. Unsafe tool output was not sent to OpenAI.";
+  if (error.stage === "AGENT_SAFETY_LIMIT") return "PromptGuard stopped after reaching the tool safety limit.";
+  const stage = error.stage === "INITIAL_RESPONSE_PROCESSING" ? "initial" : "tool-continuation";
+  return `PromptGuard received an unexpected ${stage} OpenAI response and stopped safely.`;
 }
 
 export function presentPrivacyEvent(event: PrivacyEvent): PrivacyEventView {

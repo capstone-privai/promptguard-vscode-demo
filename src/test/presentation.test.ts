@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { OpenAIRequestError } from "../openai/responsesClient";
 import { PrivacyEvent, PrivacyFinding } from "../privacy/gateway";
+import { PromptGuardProcessingError } from "../processing/errors";
 import {
   presentPrivacyEvent,
   presentProcessingError,
@@ -149,5 +150,17 @@ test("OpenAI failures expose only actionable safe metadata", () => {
   );
   const unsafeRequestId = presentProcessingError(new OpenAIRequestError("OPENAI_INITIAL_REQUEST", 500, RAW_SECRET));
   assert.equal(unsafeRequestId.includes(RAW_SECRET), false);
+  assert.equal(
+    presentProcessingError({
+      code: "OPENAI_REQUEST_ERROR",
+      stage: "OPENAI_INITIAL_REQUEST",
+      status: 429,
+    }),
+    "OpenAI quota or rate limit reached during the initial model request (429). Check API billing and usage limits.",
+  );
+  assert.equal(
+    presentProcessingError(new PromptGuardProcessingError("INITIAL_RESPONSE_PROCESSING")),
+    "PromptGuard received an unexpected initial OpenAI response and stopped safely.",
+  );
   assert.equal(presentProcessingError(new Error(RAW_SECRET)), SAFE_PROCESSING_ERROR_MESSAGE);
 });

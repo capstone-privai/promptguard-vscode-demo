@@ -1,6 +1,7 @@
 import { OpenAIResponsesClient, ResponseOutputItem, responseText } from "../openai/responsesClient";
 import { Detector } from "../privacy/types";
 import { PrivacyEvent, PrivacyGateway } from "../privacy/gateway";
+import { ProcessingStage, PromptGuardProcessingError } from "../processing/errors";
 import { TOOL_DEFINITIONS, WorkspaceTools } from "../tools/workspaceTools";
 
 export interface AgentCallbacks {
@@ -22,14 +23,21 @@ export class PromptGuardAgent {
   }
 
   public async run(rawPrompt: string): Promise<string> {
-    const prompt = await this.gateway.sanitize(rawPrompt, "user_prompt", "user-prompt.txt");
+    const prompt = await this.gateway.sanitize(rawPrompt, "user_prompt", "user-prompt.txt")
+      .catch(() => { throw new PromptGuardProcessingError("PROMPT_SANITIZATION"); });
     let response = await this.client.create(
       { model: this.model, input: prompt.text, instructions: this.instructions, tools: TOOL_DEFINITIONS },
       "OPENAI_INITIAL_REQUEST",
     );
+    let responseStage: ProcessingStage = "INITIAL_RESPONSE_PROCESSING";
     for (let round = 0; round < 8; round += 1) {
-      const calls = functionCalls(response.output ?? []);
-      if (calls.length === 0) return responseText(response);
+      let calls: FunctionCall[];
+      try {
+        calls = functionCalls(response.output ?? []);
+        if (calls.length === 0) return responseText(response);
+      } catch {
+        throw new PromptGuardProcessingError(responseStage);
+      }
       const outputs: Array<Record<string, unknown>> = [];
       for (const call of calls) {
         let rawResult: string;
@@ -44,7 +52,7 @@ export class PromptGuardAgent {
           "tool_output",
           `tool-${call.name}.txt`,
           { sourceTool: call.name },
-        );
+        ).catch(() => { throw new PromptGuardProcessingError("TOOL_OUTPUT_SANITIZATION"); });
         outputs.push({ type: "function_call_output", call_id: call.callId, output: safe.text });
       }
       response = await this.client.create({
@@ -53,8 +61,9 @@ export class PromptGuardAgent {
         instructions: this.instructions,
         tools: TOOL_DEFINITIONS,
       }, "OPENAI_TOOL_CONTINUATION");
+      responseStage = "CONTINUATION_RESPONSE_PROCESSING";
     }
-    throw new Error("Agent stopped after reaching the 8-round tool safety limit.");
+    throw new PromptGuardProcessingError("AGENT_SAFETY_LIMIT");
   }
 
 }
@@ -66,7 +75,7 @@ interface FunctionCall {
 }
 
 function functionCalls(items: ResponseOutputItem[]): FunctionCall[] {
-  return items.flatMap((item) => item.type === "function_call" && typeof item.call_id === "string" && typeof item.name === "string" && typeof item.arguments === "string"
+  return items.flatMap((item) => item && item.type === "function_call" && typeof item.call_id === "string" && typeof item.name === "string" && typeof item.arguments === "string"
     ? [{ callId: item.call_id, name: item.name, arguments: item.arguments }]
     : []);
 }
