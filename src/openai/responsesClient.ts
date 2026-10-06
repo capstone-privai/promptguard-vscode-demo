@@ -18,7 +18,60 @@ export interface ResponseRequest {
   store?: boolean;
 }
 
-export type ResponseTransport = (request: ResponseRequest, apiKey: string) => Promise<ResponseResult>;
+export type OpenAIRequestStage = "OPENAI_INITIAL_REQUEST" | "OPENAI_TOOL_CONTINUATION";
+
+export type ResponseTransport = (
+  request: ResponseRequest,
+  apiKey: string,
+  stage: OpenAIRequestStage,
+) => Promise<ResponseResult>;
+
+export class OpenAIRequestError extends Error {
+  public readonly code = "OPENAI_REQUEST_ERROR";
+  public readonly stage: OpenAIRequestStage;
+  public readonly status?: number;
+  public readonly requestId?: string;
+
+  public constructor(
+    stage: OpenAIRequestStage,
+    status?: number,
+    requestId?: string,
+  ) {
+    const safeStage = stage === "OPENAI_TOOL_CONTINUATION"
+      ? "OPENAI_TOOL_CONTINUATION"
+      : "OPENAI_INITIAL_REQUEST";
+    const safeStatus = typeof status === "number" && Number.isInteger(status) && status >= 100 && status <= 599
+      ? status
+      : undefined;
+    const safeRequestId = requestId && /^req_[A-Za-z0-9_-]{1,120}$/.test(requestId) ? requestId : undefined;
+    super(`OpenAI request failed during ${safeStage}${safeStatus ? ` (${safeStatus})` : ""}.`);
+    this.name = "OpenAIRequestError";
+    this.stage = safeStage;
+    this.status = safeStatus;
+    this.requestId = safeRequestId;
+  }
+}
+
+export function isOpenAIRequestError(error: unknown): error is OpenAIRequestError {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as {
+    code?: unknown;
+    stage?: unknown;
+    status?: unknown;
+    requestId?: unknown;
+  };
+  const validStage = candidate.stage === "OPENAI_INITIAL_REQUEST"
+    || candidate.stage === "OPENAI_TOOL_CONTINUATION";
+  const validStatus = candidate.status === undefined
+    || (typeof candidate.status === "number"
+      && Number.isInteger(candidate.status)
+      && candidate.status >= 100
+      && candidate.status <= 599);
+  const validRequestId = candidate.requestId === undefined
+    || (typeof candidate.requestId === "string"
+      && /^req_[A-Za-z0-9_-]{1,120}$/.test(candidate.requestId));
+  return candidate.code === "OPENAI_REQUEST_ERROR" && validStage && validStatus && validRequestId;
+}
 
 export class OpenAIResponsesClient {
   public constructor(
@@ -26,12 +79,29 @@ export class OpenAIResponsesClient {
     private readonly transport: ResponseTransport = fetchTransport,
   ) {}
 
-  public create(request: ResponseRequest): Promise<ResponseResult> {
-    return this.transport({ ...request, store: false }, this.apiKey);
+  public async create(
+    request: ResponseRequest,
+    stage: OpenAIRequestStage = "OPENAI_INITIAL_REQUEST",
+  ): Promise<ResponseResult> {
+    const safeStage = stage === "OPENAI_TOOL_CONTINUATION"
+      ? "OPENAI_TOOL_CONTINUATION"
+      : "OPENAI_INITIAL_REQUEST";
+    try {
+      return await this.transport({ ...request, store: false }, this.apiKey, safeStage);
+    } catch (error) {
+      if (isOpenAIRequestError(error)) {
+        throw new OpenAIRequestError(safeStage, error.status, error.requestId);
+      }
+      throw new OpenAIRequestError(safeStage);
+    }
   }
 }
 
-async function fetchTransport(request: ResponseRequest, apiKey: string): Promise<ResponseResult> {
+async function fetchTransport(
+  request: ResponseRequest,
+  apiKey: string,
+  stage: OpenAIRequestStage,
+): Promise<ResponseResult> {
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -42,7 +112,7 @@ async function fetchTransport(request: ResponseRequest, apiKey: string): Promise
   });
   if (!response.ok) {
     const requestId = response.headers.get("x-request-id");
-    throw new Error(`OpenAI request failed (${response.status})${requestId ? `, request id ${requestId}` : ""}`);
+    throw new OpenAIRequestError(stage, response.status, requestId ?? undefined);
   }
   return (await response.json()) as ResponseResult;
 }
@@ -64,4 +134,3 @@ export function responseText(response: ResponseResult): string {
   }
   return pieces.join("\n") || "The model returned no text.";
 }
-

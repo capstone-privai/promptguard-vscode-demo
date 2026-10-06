@@ -13,5 +13,6 @@ export interface SanitizedText {
 }
 
 export interface Detector {
+  readonly displayName?: string;
   scan(text: string, source: string): Promise<Detection[]>;
 }

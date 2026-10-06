@@ -366,7 +366,7 @@ Windows PowerShell은 `npm.ps1`을 차단할 수 있으므로 명령과 VS Code 
 4. 채팅 history persistence와 concurrent session 설계는 없다.
 5. 첫 번째 workspace folder만 사용한다.
 6. 실제 diff/rollback UI가 없다.
-7. 사용자 prompt 원문은 로컬 webview history에 표시된다.
+7. 입력 중 prompt는 로컬 composer에 보이지만, 제출 후 원문은 webview history에 남지 않고 고정된 content-hidden 안내로 대체된다.
 8. 일반 사용자 설치 과정은 완성되지 않았다.
 9. API 비용 통제는 OpenAI Project/Billing 설정에 의존한다.
 

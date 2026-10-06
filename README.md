@@ -17,7 +17,7 @@ VS Code side panel
   -> OpenAI Responses API
 ```
 
-The OpenAI API key is held by VS Code `SecretStorage`. The extension does not write prompts, tool output, detected values, or the API key to a log file. Privacy events contain only source, count, type, and masked-character count.
+The OpenAI API key is held by VS Code `SecretStorage`. The extension does not write prompts, tool output, detected values, or the API key to a log file. Privacy events contain only safe structured metadata: source, detector/rule labels, credential type, masking action, and aggregate counts. They never contain the detected value, offsets, fingerprint, placeholder, raw prompt, or raw tool output.
 
 ## Setup and run
 
@@ -36,6 +36,12 @@ Open this repository in VS Code, press `F5`, and in the Extension Development Ho
 3. Select **Set API key**. The value is stored in VS Code SecretStorage and is never shown again.
 4. Enter a coding task and select **Send**.
 5. Observe privacy events and local tool activity in the side panel.
+
+## Intermediate processing results
+
+The existing chronological side-panel feed shows each prompt and tool-output scan as a compact card. Cards include detected and masked counts plus one metadata-only row per masked finding: credential type, source, detector name when available, `MASK` action, and the exact detector rule label when available. Tool activity keeps the existing tool, workspace-relative path, and status information. Phase chips are derived only from actual prompt, detector, masking, and tool events; they do not expose model reasoning.
+
+Submitted prompt content is replaced in the history with a fixed local-scan notice. The prompt is still visible to the user while it is being typed in the composer, but it is cleared on submission and is never echoed into the event history. Missing detector or rule metadata is omitted rather than synthesized.
 
 Setting the API key again replaces it; **Delete API key** removes it. The default model is `gpt-6-luna` and can be changed with `promptguard.model`. If the repository virtual environment is not used, set `promptguard.pythonPath` to a Python executable that has `credsweeper==1.18.5` installed.
 
@@ -130,9 +136,9 @@ evidence, not production performance claims.
 ## Failure and storage boundaries
 
 - Raw prompt/tool text exists transiently in extension and detector process memory because local scanning requires it.
-- The webview displays the text the user typed locally, but the cloud client receives only the sanitized representation.
+- The prompt composer displays text while the user is typing. On submission it is cleared and the history records only a fixed content-hidden notice; the cloud client receives only the sanitized representation.
 - Responses are sent with `store=false`. Tool turns replay prior response output in the next request rather than relying on a stored `previous_response_id`.
-- API errors expose only HTTP status and optional OpenAI request ID; response bodies are not logged.
+- API errors expose only the fixed request stage, HTTP status, and an optional validated OpenAI request ID; response bodies and upstream exception details are not logged or rendered.
 - The synthetic fixture deliberately contains fake credential-shaped strings. Never replace them with real secrets.
 
 ## Explicit limitations
